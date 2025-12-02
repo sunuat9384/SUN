@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SUN Mobile 門市分佈圖</title>
+    <!-- Leaflet CSS for map display -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+            background: #f0f0f0;
+            font-family: "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Title Overlay specifically for PPT style */
+        .title-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-left: 5px solid #FEC81B; /* SUN Mobile Yellow tone */
+        }
+
+        .title-overlay h1 {
+            margin: 0;
+            font-size: 24px;
+            color: #333;
+        }
+        
+        .title-overlay p {
+            margin: 5px 0 0 0;
+            font-size: 14px;
+            color: #666;
+        }
+
+        /* Replay Button */
+        #replay-btn {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            z-index: 1000;
+            background: #FEC81B; /* SUN Mobile Yellow tone */
+            color: #333; /* Dark text for contrast */
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: background 0.3s;
+        }
+
+        #replay-btn:hover {
+            background: #E0B819; /* Slightly darker yellow for hover */
+        }
+
+        /* The Pin Icon Styling */
+        .custom-pin {
+            background: transparent;
+            border: none;
+        }
+
+        /* Falling Animation Keyframes */
+        @keyframes dropIn {
+            0% {
+                opacity: 0;
+                transform: translateY(-500px) scale(0.5);
+            }
+            60% {
+                opacity: 1;
+                transform: translateY(20px) scale(1.1);
+            }
+            80% {
+                transform: translateY(-10px) scale(0.95);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .pin-icon-svg {
+            filter: drop-shadow(3px 5px 2px rgba(0,0,0,0.4));
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="title-overlay">
+        <h1>SUN Mobile 門市分佈圖</h1>
+        <p></p>
+    </div>
+
+    <div id="map"></div>
+    <button id="replay-btn" onclick="startAnimation()">重播動畫 (Replay)</button>
+
+    <script>
+        // 1. Initialize Map
+        // Centered on Hong Kong
+        const map = L.map('map', {
+            zoomControl: false, // Cleaner look for PPT
+            attributionControl: false // Cleaner look
+        }).setView([22.35, 114.14], 11);
+
+        // Add a clean, Google-Maps-like tile layer (CartoDB Voyager)
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            maxZoom: 19,
+            subdomains: 'abcd',
+        }).addTo(map);
+
+        // 2. Data Preparation
+        // Mapping district keywords to approximate coordinates (Lat, Lng)
+        const locationMap = {
+            // HK Island
+            "中環": [22.2825, 114.1570],
+            "灣仔": [22.2760, 114.1730],
+            "銅鑼灣": [22.2800, 114.1850],
+            "北角": [22.2910, 114.2000],
+            "柴灣": [22.2640, 114.2370],
+            "香港仔": [22.2480, 114.1540],
+            "鴨脷洲": [22.2500, 114.1560],
+            "西灣河": [22.2780, 114.2200],
+            "西環": [22.2850, 114.1350],
+
+            // Kowloon
+            "佐敦": [22.3050, 114.1700],
+            "旺角": [22.3193, 114.1694],
+            "太子": [22.3250, 114.1700],
+            "深水埗": [22.3300, 114.1610],
+            "紅磡": [22.3050, 114.1860],
+            "黃大仙": [22.3420, 114.1930],
+            "鑽石山": [22.3400, 114.2020],
+            "九龍灣": [22.3230, 114.2140],
+            "觀塘": [22.3120, 114.2250],
+            "土瓜灣": [22.3150, 114.1900],
+            "新蒲崗": [22.3350, 114.2000],
+            "九龍城": [22.3300, 114.1880],
+            "茘枝角": [22.3360, 114.1480],
+            "秀茂坪": [22.3060, 114.2460],
+            "慈雲山": [22.3480, 114.1950],
+            "橫頭磡": [22.3400, 114.1890],
+            "油塘": [22.2950, 114.2380],
+            "啟德": [22.3200, 114.2030],
+            "淘大商場": [22.3210, 114.2100],
+
+            // New Territories
+            "沙田": [22.3820, 114.1880],
+            "大圍": [22.3730, 114.1780],
+            "馬鞍山": [22.4240, 114.2310],
+            "大埔": [22.4508, 114.1642],
+            "粉嶺": [22.4920, 114.1420],
+            "上水": [22.5030, 114.1280],
+            "元朗": [22.4430, 114.0280],
+            "屯門": [22.3920, 113.9750],
+            "天水圍": [22.4580, 114.0040],
+            "荃灣": [22.3700, 114.1140],
+            "葵芳": [22.3570, 114.1270],
+            "葵涌": [22.3570, 114.1270],
+            "將軍澳": [22.3080, 114.2600],
+            "青衣": [22.3580, 114.1070],
+            "東涌": [22.2890, 113.9420],
+            "西貢": [22.3810, 114.2720],
+            "長沙灣道": [22.3360, 114.1550],
+            "良景邨": [22.4040, 113.9840],
+            "屯門鄉事會路": [22.3920, 113.9750] // V CITY
+        };
+
+        const rawAddresses = [
+            "香港仔湖南街6號D號舖",
+            "香港仔鴨脷洲利東邨利東商場1期2樓L204號舖",
+            "中環德輔道中84-86號章記大廈地下A舖",
+            "西環皇后大道西496號新安大樓地下A1舖",
+            "灣仔灣仔道162-164號地下B2號舖",
+            "銅鑼灣怡和街1A-1L香港大廈地下B舖",
+            "北角英皇道256-266號地下G22號舖 (炮台山地鐵站A出口)",
+            "柴灣新翠商場3樓327號舖",
+            "柴灣小西灣邨小西灣廣場地下12號舖",
+            "西灣河筲箕灣道35-55號麗灣大廈地下K2號舖",
+            "沙田沙田廣場3樓5A號舖",
+            "沙田橫壆街1-15號好運中心商場3樓 3064號舖",
+            "沙田大圍車公廟路18號圍方5樓523B號舖",
+            "沙田銀城街2號置富第一城樂薈地下G84A號舖",
+            "沙田大圍村南道15-35號富嘉花園地下29B舖",
+            "沙田禾輋廣場2樓279號舖",
+            "馬鞍山新港城中心3樓3204號舖",
+            "大埔安慈路4號昌運中心地下36號舖",
+            "大埔太和路12號太和商場2樓219A號舖",
+            "大埔南運路9號新達廣場1樓034號舖",
+            "粉嶺名都商場2樓49號舖",
+            "上水龍琛路48號上水匯地下G02號舖",
+            "上水名都廣場2樓7號舖",
+            "上水彩園廣場3樓R14A號舖",
+            "元朗教育路8-16號樂成大廈地下D1-D3號舖",
+            "元朗青山公路68-76號榮光大廈地下6號舖 (恆香餅家側)",
+            "元朗朗日路8號形點II 3樓A322號舖",
+            "屯門友愛邨H.A.N.D.S. S區1樓S-121號舖",
+            "屯門時代廣場南翼3樓5號舖",
+            "屯門啟發徑1-13號萬成大廈地下6A號舖",
+            "屯門屯門鄉事會路83號 V CITY MTR層M-9A號舖",
+            "屯門湖翠路1號蝴蝶廣場1樓R112號舖",
+            "天水圍 T TOWN SOUTH 2樓 S202號舖",
+            "天水圍天湖路1號 嘉湖新北江商場 1樓 C28-C29號舖",
+            "荃灣眾安街68號千色匯 I 地下G001A號舖",
+            "荃灣青山公路南豐中心1樓A25號舖",
+            "葵芳新都會廣場1樓146號舖",
+            "葵芳葵涌廣場2樓C120號舖",
+            "葵涌石籬邨石籬商場2期地下B010號舖",
+            "葵涌大窩口邨大窩口商場2樓C05B號舖",
+            "將軍澳新都城中心2期UG層72B號舖",
+            "將軍澳重華路8號東港城2樓219B號舖",
+            "將軍澳唐德街9號將軍澳中心1樓176號舖",
+            "青衣青衣城1樓173號舖",
+            "東涌富東邨富東商場1樓118號舖",
+            "佐敦白加士街66號地下A2號舖",
+            "旺角西洋菜南街1A號百寶利商業中心地下1號舖",
+            "太子彌敦道750號始創中心地下G23號舖",
+            "旺角亞皆老街83號先達廣場地下G5號舖",
+            "土瓜灣土瓜灣道247B美景樓第二期地下",
+            "紅磡船塢街99J號黃埔新邨地下4K2號舖",
+            "深水埗欽州街37K西九龍中心3樓316號舖",
+            "深水埗長沙灣道 226-242 號 金華大廈 A4號舖",
+            "黃大仙上邨黃大仙中心北館地下G07E號舖",
+            "新蒲崗太子道東638號 MIKIKI商場 1樓128號舖",
+            "鑽石山荷里活廣場2樓225號舖",
+            "九龍灣德福廣場P48號舖",
+            "九龍灣牛頭角道77號淘大商場1期2樓S77-78A號舖",
+            "九龍觀塘駿業街58號電訊數碼大樓10樓",
+            "觀塘牛頭角道300-302號裕民中心地下16號舖",
+            "觀塘觀塘道418號創紀之城5期apm 5樓L5-9號舖",
+            "西貢親民街16號西貢花園地下14號A舖",
+            "九龍城獅子石道93號地下4號舖",
+            "茘枝角美孚新邨萬事達廣場地下N62-B2號舖",
+            "秀茂坪秀茂坪商場1樓103A舖",
+            "長沙灣元州街303號元州商場地下G14號舖",
+            "慈雲山毓華街23號慈雲山中心1樓108A號舖",
+            "橫頭磡聯合道198號樂富廣場3樓3128號舖",
+            "油塘鯉魚門道80號鯉魚門廣場1樓121B號舖",
+            "屯門田景路31號良景邨良景廣場地下L115號舖",
+            "九龍啟德協調道10號天璽•天MALL一期低層地下23號舖"
+        ];
+
+        // Process data to get coordinates
+        const shops = [];
+        rawAddresses.forEach(addr => {
+            let foundCoord = null;
+            // Simple keyword matching (prioritize more specific location over general district)
+            let matchedKey = null;
+
+            // Simple keyword matching, prioritizing the most specific match found first
+            const keys = Object.keys(locationMap);
+            for (let i = 0; i < keys.length; i++) {
+                const key = keys[i];
+                if (addr.includes(key)) {
+                    matchedKey = key;
+                    break; 
+                }
+            }
+
+            if (matchedKey) {
+                const coord = locationMap[matchedKey];
+                // Add slight random jitter so markers don't stack exactly on top of each other
+                const lat = coord[0] + (Math.random() - 0.5) * 0.008;
+                const lng = coord[1] + (Math.random() - 0.5) * 0.008;
+                foundCoord = [lat, lng];
+            }
+             
+            if (foundCoord) {
+                shops.push({ address: addr, lat: foundCoord[0], lng: foundCoord[1] });
+            } else {
+                // Fallback center if detection fails
+                const lat = 22.3193 + (Math.random() - 0.5) * 0.1;
+                const lng = 114.1694 + (Math.random() - 0.5) * 0.1;
+                shops.push({ address: addr, lat: lat, lng: lng });
+            }
+        });
+
+        // 3. Create Custom Yellow Pin Icon
+        // Using an SVG string to ensure it's yellow and sharp
+        const SUN_MOBILE_YELLOW = "#FEC81B";
+
+        const svgIcon = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${SUN_MOBILE_YELLOW}" width="40" height="40" stroke="#333" stroke-width="1.5">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+            </svg>
+        `;
+
+        const markers = [];
+
+        function startAnimation() {
+            // Clear existing markers
+            markers.forEach(m => map.removeLayer(m));
+            markers.length = 0;
+
+            // Randomize order slightly for more natural "rain" effect
+            const shuffledShops = [...shops].sort(() => 0.5 - Math.random());
+
+            shuffledShops.forEach((shop, index) => {
+                // Calculate delay: Fast drop (entire sequence in about 5 seconds)
+                const delay = index * 70; 
+
+                const myIcon = L.divIcon({
+                    className: 'custom-pin',
+                    html: `<div class="pin-icon-svg" style="animation: dropIn 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards; animation-delay: ${delay}ms; opacity: 0; transform: translateY(-500px);">
+                            ${svgIcon}
+                           </div>`,
+                    iconSize: [40, 40],
+                    iconAnchor: [20, 40], // Tip of the pin
+                    popupAnchor: [0, -40]
+                });
+
+                const marker = L.marker([shop.lat, shop.lng], { icon: myIcon }).addTo(map);
+                
+                // Add Popup
+                marker.bindPopup(`<b style="color:${SUN_MOBILE_YELLOW}; text-shadow: 1px 1px 1px #000;">SUN Mobile</b><br>${shop.address}`);
+                
+                markers.push(marker);
+            });
+        }
+
+        // Start animation on load
+        window.onload = () => {
+            setTimeout(startAnimation, 500); // Small buffer to let tiles load
+        };
+
+    </script>
+</body>
+</html>
